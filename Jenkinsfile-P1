@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+    environment{
+        DOCKERHUB_USERNAME = "deepch98"
+        APP_NAME = "gitops-demo-app"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        IMAGE_NAME = "${DOCKERHUB_USERNAME}" + "/" + "${APP_NAME}"
+        REGISTRY_CREDS = "dockerhub"
+    } 
+
+    stages{
+        stage("Cleanup Workspace"){
+            steps{
+                script{
+                    cleanWs()
+                }
+            }
+        }
+        stage("Checkout SCM"){
+            steps{
+                git branch: 'main', 
+                credentialsId: 'github',
+                url: 'https://github.com/proffdeep/gitops-demo-app.git'
+            }
+        }
+        stage("Build Docker Image"){
+            steps{
+                script{
+                    docker_image = docker.build "${IMAGE_NAME}"
+                }
+            }
+        }
+        stage("Push Docker Image"){
+            steps{
+                script{
+                    docker.withRegistry('', REGISTRY_CREDS){
+                        docker_image.push("${BUILD_NUMBER}")
+                        docker_image.push("latest")
+                    }
+                }
+            }
+        }
+        stage("Delete Docker Image"){
+            steps{
+                sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG}"
+                sh "docker rmi ${IMAGE_NAME}:latest"
+            }
+        }
+        stage("Trigger config change"){
+            steps{
+              sh "curl -v -k --user deep:11717452bf62fb7946b8c51818b1f8e53a -X POST -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://18.207.142.217:8080/job/gitops-config/buildWithParameters?token=gitops-config'"  
+            }
+        }
+        
+    }
+}
